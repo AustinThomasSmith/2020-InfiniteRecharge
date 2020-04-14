@@ -1,238 +1,239 @@
 package com.spartronics4915.frc2020;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Set;
 import java.util.stream.Collectors;
 
-import com.spartronics4915.frc2020.TrajectoryContainer.Destination;
-import com.spartronics4915.frc2020.commands.*;
-import com.spartronics4915.frc2020.subsystems.*;
-import com.spartronics4915.frc2020.subsystems.LED.BlingState;
+import com.spartronics4915.frc2020.commands.ClimberCommands;
+import com.spartronics4915.frc2020.commands.DriveCommands;
+import com.spartronics4915.frc2020.commands.IndexerCommands;
+import com.spartronics4915.frc2020.commands.IntakeCommands;
+import com.spartronics4915.frc2020.commands.LauncherCommands;
+import com.spartronics4915.frc2020.commands.PanelRotatorCommands;
+import com.spartronics4915.frc2020.commands.SuperstructureCommands;
+import com.spartronics4915.frc2020.commands.LEDCommands;
+import com.spartronics4915.frc2020.subsystems.Climber;
+import com.spartronics4915.frc2020.subsystems.Drive;
+import com.spartronics4915.frc2020.subsystems.Indexer;
+import com.spartronics4915.frc2020.subsystems.Intake;
+import com.spartronics4915.frc2020.subsystems.LED;
+import com.spartronics4915.frc2020.subsystems.LED.Bling;
+import com.spartronics4915.frc2020.subsystems.Launcher;
+import com.spartronics4915.frc2020.subsystems.PanelRotator;
+import com.spartronics4915.frc2020.subsystems.Vision;
+import com.spartronics4915.lib.hardware.motors.SpartronicsSimulatedMotor;
 import com.spartronics4915.lib.hardware.sensors.T265Camera;
 import com.spartronics4915.lib.hardware.sensors.T265Camera.CameraJNIException;
 import com.spartronics4915.lib.math.twodim.control.RamseteTracker;
-import com.spartronics4915.lib.math.twodim.geometry.Pose2d;
-import com.spartronics4915.lib.math.twodim.geometry.Pose2dWithCurvature;
-import com.spartronics4915.lib.math.twodim.geometry.Rectangle2d;
-import com.spartronics4915.lib.math.twodim.geometry.Rotation2d;
-import com.spartronics4915.lib.math.twodim.geometry.Translation2d;
-import com.spartronics4915.lib.math.twodim.trajectory.constraints.TimingConstraint;
-import com.spartronics4915.lib.math.twodim.trajectory.constraints.VelocityLimitRegionConstraint;
-import com.spartronics4915.lib.math.twodim.trajectory.types.TimedTrajectory;
-import com.spartronics4915.lib.subsystems.drive.CharacterizeDriveBaseCommand;
-import com.spartronics4915.lib.subsystems.drive.TrajectoryTrackerCommand;
+import com.spartronics4915.lib.math.twodim.control.TrajectoryTracker;
+import com.spartronics4915.lib.subsystems.estimator.DrivetrainEstimator;
 import com.spartronics4915.lib.subsystems.estimator.RobotStateEstimator;
-import com.spartronics4915.lib.subsystems.estimator.RobotStateMap;
+import com.spartronics4915.lib.subsystems.estimator.RobotStateEstimator.EstimatorSource;
 import com.spartronics4915.lib.util.Kinematics;
 import com.spartronics4915.lib.util.Logger;
 
 import edu.wpi.first.networktables.NetworkTableEntry;
 import edu.wpi.first.networktables.NetworkTableInstance;
-import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
-import edu.wpi.first.wpilibj.util.Units;
 import edu.wpi.first.wpilibj2.command.Command;
-import edu.wpi.first.wpilibj2.command.ParallelCommandGroup;
-import edu.wpi.first.wpilibj2.command.ConditionalCommand;
+import edu.wpi.first.wpilibj2.command.InstantCommand;
 import edu.wpi.first.wpilibj2.command.StartEndCommand;
-import edu.wpi.first.wpilibj2.command.Subsystem;
-import edu.wpi.first.wpilibj2.command.button.JoystickButton;
+import edu.wpi.first.wpilibj.RobotBase;
 
 public class RobotContainer
 {
-    private static class AutoMode
-    {
-        public final String name;
-        public final Command command;
-
-        public AutoMode(String name, Command command)
-        {
-            this.name = name;
-            this.command = command;
-        }
-    }
-
     private static final String kAutoOptionsKey = "AutoStrategyOptions";
-    public static final AutoMode kDefaultAutoMode = new AutoMode("All: Do Nothing", new Command()
-    {
-        @Override
-        public Set<Subsystem> getRequirements()
-        {
-            return Set.of();
-        }
-    });
-
     public final NetworkTableEntry mAutoModeEntry = NetworkTableInstance.getDefault()
         .getTable("SmartDashboard").getEntry("AutoStrategy");
-    public final AutoMode[] mAutoModes;
 
-    /* subsystems */
-    private final Climber mClimber;
-    private final Intake mIntake;
-    private final Indexer mIndexer;
-    private final Launcher mLauncher;
-    private final PanelRotator mPanelRotator;
-    private final LED mLED;
-    private final Vision mVision;
+    /* subsystems, public for easier unit testing */
+    public final Climber mClimber;
+    public final Intake mIntake;
+    public final Indexer mIndexer;
+    public final Launcher mLauncher;
+    public final PanelRotator mPanelRotator;
+    public final LED mLED;
+    public final Vision mVision;
+    public final Drive mDrive;
+    public final TrajectoryTracker mRamseteController = new RamseteTracker(2, 0.7);
+    public final RobotStateEstimator mStateEstimator;
+    public final TrajectoryContainer.AutoMode[] mAutoModes;
 
-    /* subsystem commands */
-    private final ClimberCommands mClimberCommands;
-    private final IntakeCommands mIntakeCommands;
-    private final IndexerCommands mIndexerCommands;
-    private final LauncherCommands mLauncherCommands;
-    private final PanelRotatorCommands mPanelRotatorCommands;
+    /* subsystem commands, public for easier unit testing */
+    public final LEDCommands mLEDCommands;
+    public final ClimberCommands mClimberCommands;
+    public final DriveCommands mDriveCommands;
+    public final IntakeCommands mIntakeCommands;
+    public final IndexerCommands mIndexerCommands;
+    public final LauncherCommands mLauncherCommands;
+    public final PanelRotatorCommands mPanelRotatorCommands;
+    public final SuperstructureCommands mSuperstructureCommands;
 
-    private final Joystick mJoystick;
-    private final Joystick mButtonBoard;
-
-    private final Drive mDrive;
-    private final RamseteTracker mRamseteController = new RamseteTracker(2, 0.7);
-    private final RobotStateEstimator mStateEstimator;
+    private final ButtonFactory mButtons;
+    private final int mJoystick = Constants.OI.kJoystickId;
+    private final int mButtonBoard = Constants.OI.kButtonBoardId;;
 
     /**
      * The container for the robot. Contains subsystems, OI devices, and commands.
      */
     public RobotContainer()
     {
-        mJoystick = new Joystick(Constants.OI.kJoystickId);
-        mButtonBoard = new Joystick(Constants.OI.kButtonBoardId);
-
-        T265Camera slamra;
-        try
+        int retryCount = 0;
+        T265Camera slamra = null;
+        while (++retryCount <= 1 && slamra == null)
         {
-            slamra = new T265Camera(Constants.Estimator.kSlamraToRobot,
-                Constants.Estimator.kMeasurementCovariance);
+            try
+            {
+                slamra = new T265Camera(Constants.Estimator.kSlamraToRobot,
+                    Constants.Estimator.kT265InternalMeasurementCovariance);
+                SmartDashboard.putString("RobotContainer/vslamStatus", "OK");
+            }
+            catch (CameraJNIException | UnsatisfiedLinkError e)
+            {
+                slamra = null;
+                Logger.error("RobotContainer: T265 camera is unavailable");
+                Logger.exception(e);
+                SmartDashboard.putString("RobotContainer/vslamStatus", "BAD!");
+            }
         }
-        catch (CameraJNIException | UnsatisfiedLinkError e)
-        {
-            slamra = null;
-            Logger.exception(e);
-        }
-        mDrive = new Drive();
-        mStateEstimator = new RobotStateEstimator(mDrive,
-            new Kinematics(Constants.Drive.kTrackWidthMeters, Constants.Drive.kScrubFactor),
-            slamra);
-        var slamraCommand = new StartEndCommand(() -> mStateEstimator.enable(),
-            () -> mStateEstimator.stop(), mStateEstimator);
-        mStateEstimator.setDefaultCommand(slamraCommand);
 
-        System.out.println(
-            new TrajectoryContainer.DestinationCouple(Destination.ShieldGeneratorFarRight,
-                Destination.MiddleShootingPosition).hashCode());
+        mButtons = new ButtonFactory();
 
-        mAutoModes = new AutoMode[]
-        {
-            kDefaultAutoMode,
-            new AutoMode("Drive Straight",
-                new TrajectoryTrackerCommand(mDrive,
-                TrajectoryContainer.middle.getTrajectory(null, Destination.ShieldGeneratorFarRight),
-                mRamseteController, mStateEstimator.getEncoderRobotStateMap())),
-            new AutoMode("Characterize Drive",
-                new CharacterizeDriveBaseCommand(mDrive, Constants.Drive.kWheelDiameter)),
-            new AutoMode("Laser Turret",
-                new LaserTurretToFieldPose(mStateEstimator.getCameraRobotStateMap())),
-            new AutoMode("Right: Through Trench",
-                new TrajectoryTrackerCommand(mDrive,
-                    TrajectoryContainer.left.getTrajectory(null, Destination.LeftTrenchFar),
-                    mRamseteController, mStateEstimator.getEncoderRobotStateMap()))
-        };
-
-        mStateEstimator.resetRobotStateMaps(TrajectoryContainer.middle.mStartPoint);
-
-        String autoModeList = Arrays.stream(mAutoModes).map((m) -> m.name).collect(Collectors.joining(","));
-        SmartDashboard.putString(kAutoOptionsKey, autoModeList);
-
+        /* constructing subsystems */
         mClimber = new Climber();
         mIntake = new Intake();
         mIndexer = new Indexer();
         mLauncher = new Launcher();
         mPanelRotator = new PanelRotator();
         mLED = LED.getInstance();
-        mVision = new Vision(mStateEstimator, mLauncher);
+        mDrive = new Drive(mLauncher);
 
-        mClimberCommands = new ClimberCommands();
-        mIntakeCommands = new IntakeCommands();
-        mIndexerCommands = new IndexerCommands();
-        mLauncherCommands = new LauncherCommands(mStateEstimator.getCameraRobotStateMap(), new Pose2d());
-        mPanelRotatorCommands = new PanelRotatorCommands();
+        var ekf = new DrivetrainEstimator(Constants.Estimator.kStateStdDevs,
+            Constants.Estimator.measurementStdDevs, Constants.Estimator.kSlamStdDevsPerMeter,
+            Constants.Estimator.kApproximateStartingPose);
+        mStateEstimator = new RobotStateEstimator(mDrive,
+            new Kinematics(Constants.Drive.kTrackWidthMeters, Constants.Drive.kScrubFactor),
+            slamra,
+            ekf,
+            slamra == null ? EstimatorSource.EncoderOdometry : EstimatorSource.VisualSLAM);
+        StartEndCommand slamraCmd = new StartEndCommand(
+            () -> mStateEstimator.enable(),
+            () -> mStateEstimator.stop(),
+            mStateEstimator);
+        mStateEstimator.setDefaultCommand(slamraCmd);
+        mStateEstimator.resetRobotStateMaps(Constants.Trajectory.kStartPointRight);
+        mVision = new Vision(mStateEstimator);
 
-        // Default Commands run whenever no Command is scheduled to run for a subsystem
-        mClimber.setDefaultCommand(mClimberCommands.new Stop(mClimber));
-        mIntake.setDefaultCommand(mIntakeCommands.new Stop(mIntake));
-        // mLauncher.setDefaultCommand(new ConditionalCommand(mLauncherCommands.new Target(mLauncher),
-        //     mLauncherCommands.new Adjust(mLauncher), mLauncher::inRange));
-        mPanelRotator.setDefaultCommand(mPanelRotatorCommands.new Stop(mPanelRotator));
+        if (!RobotBase.isReal()) // we're unit testing
+            SpartronicsSimulatedMotor.resetGlobalState();
 
+        /* constructing subsystem commands */
+        mLEDCommands = new LEDCommands(mLED);
+        mClimberCommands = new ClimberCommands(mClimber);
+        mDriveCommands = new DriveCommands(mDrive, mButtons.getJoystick(mJoystick));
+        mIntakeCommands = new IntakeCommands(mIntake, mIndexer);
+        mIndexerCommands = new IndexerCommands(mIndexer);
+        mLauncherCommands = new LauncherCommands(mLauncher, mVision, mIndexerCommands,
+            mStateEstimator.getBestRobotStateMap());
+        mPanelRotatorCommands = new PanelRotatorCommands(mPanelRotator);
+        mSuperstructureCommands = new SuperstructureCommands(mIndexerCommands,
+            mIntakeCommands, mLauncherCommands);
+
+        mVision.registerTargetListener(mStateEstimator.getVisionListener());
+
+        // NB: ButtonFactory handles the !RobotBase.isReal case.
         configureJoystickBindings();
         configureButtonBoardBindings();
+
+        /* publish our automodes to the dashboard -----------------*/
+        mAutoModes = TrajectoryContainer.getAutoModes(mStateEstimator, mDrive, mRamseteController,
+            mSuperstructureCommands);
+        String autoModeList = Arrays.stream(mAutoModes).map((m) -> m.name)
+            .collect(Collectors.joining(","));
+        SmartDashboard.putString(kAutoOptionsKey, autoModeList);
     }
 
+    // Joystick buttons are labelled on the joystick! what a concept
     private void configureJoystickBindings()
     {
-        // Note: changes to bling state can be augmented with:
-        // .alongWith(new SetBlingStateCommand(mLED, BlingState.SOME_STATE)));
+        // toggle animation to indicate SLOW vs NORMAL drive speeds
+        mButtons.create(mJoystick, 1)
+            .whenPressed(mDriveCommands.new SetSlow()
+                .alongWith(mLEDCommands.new SetBlingState(Bling.kDriveSlow)))
+            .whenReleased(mDriveCommands.new ToggleSlow()
+                .alongWith(mLEDCommands.new SetBlingState(Bling.kTeleop)));
 
-        /*
-        new JoystickButton(mJoystick, 1).whenPressed(() -> mDrive.driveSlow()).whenReleased(() -> mDrive.driveNormal());
-        new JoystickButton(mJoystick, 2).whenHeld(new LauncherCommands.Raise(mLauncher));
-        new JoystickButton(mJoystick, 3).whenHeld(new LauncherCommands.Lower(mLauncher));
-        new JoystickButton(mJoystick, 4).whenHeld(new LauncherCommands.Left(mLauncher));
-        new JoystickButton(mJoystick, 5).whenHeld(new LauncherCommands.Right(mLauncher));
-        */
+        // Chris has expressed he doesn't want functionality on buttons 2, 4, and 5
+        mButtons.create(mJoystick, 3).whenPressed(mDriveCommands.new ToggleInverted());
 
-        /* Switch Camera views
-        new JoystickButton(mJoystick, 6).whenPressed(
-            new InstantCommand(() -> mCamera.switch(Constants.Camera.kFrontId)));
-        new JoystickButton(mJoystick, 7).whenPressed(
-            new InstantCommand(() -> mCamera.switch(Constants.Camera.kRearId)));
-        new JoystickButton(mJoystick, 10).whenPressed(
-            new InstantCommand(() -> mCamera.switch(Constants.Camera.kIntakeId)));
-        new JoystickButton(mJoystick, 11).whenPressed(
-            new InstantCommand(() -> mCamera.switch(Constants.Camera.kTurretId)));
-        */
+        // JoystickButton 6 / 7 have the same functionality - they're close together +
+        // on passive hand side
+        mButtons.create(mJoystick, 6).whenPressed(mDriveCommands.new ToggleSlow()
+            .alongWith(mLEDCommands.new SetBlingState(Bling.kDriveSlow))); // FIXME: this will not
+                                                                           // go back to kTeleop
+        mButtons.create(mJoystick, 7).whenPressed(mDriveCommands.new ToggleSlow()
+            .alongWith(mLEDCommands.new SetBlingState(Bling.kDriveSlow)));
 
-        // new JoystickButton(mJoystick, 1).toggleWhenPressed(mLauncherCommands.new ShootBallTest(mLauncher));
-        // new JoystickButton(mJoystick, 2).toggleWhenPressed(mLauncherCommands.new TurretTest(mLauncher));
-        // new JoystickButton(mJoystick, 3).toggleWhenPressed(mLauncherCommands.new HoodTest(mLauncher));
-        // new JoystickButton(mJoystick, 7).whileHeld(new TrajectoryTrackerCommand(mDrive, mDrive,
-        //    this::throughTrench, mRamseteController, mStateEstimator.getEncoderRobotStateMap()));
-        // new JoystickButton(mJoystick, 7).whileHeld(new TrajectoryTrackerCommand(mDrive, mDrive,
-        //    this::toControlPanel, mRamseteController, mStateEstimator.getEncoderRobotStateMap()));
-        // new JoystickButton(mJoystick, 3).toggleWhenPressed(mLauncherCommands.new AutoAimTurret(mLauncher,Constants.Launcher.goalLocation,mStateEstimator.getEncoderRobotStateMap()));
+        mButtons.create(mJoystick, 10).whenPressed(new InstantCommand(() -> mIndexer.setZero()));
+        mButtons.create(mJoystick, 11)
+            .whenPressed(new InstantCommand(() -> mLauncher.zeroTurret()));
     }
 
+    /** TODO: verify
+     * +--------------------------------------+
+     * |               (9)   (7)(8)  (10)(11) |
+     * |                                      |
+     * |     (x)            (3)   (4)         |
+     * |  (x)++(x)     (5)             (6)    |
+     * |    (x)            (1)   (2)          |
+     * |             (x)              (x)     |
+     * |                                      |
+     * +--------------------------------------+
+     */
     private void configureButtonBoardBindings()
     {
-        // new JoystickButton(mButtonBoard, 0).whenPressed(LauncherCommands.new Launch(mLauncher));
-        // new JoystickButton(mButtonBoard, 1).toggleWhenPressed(new ConditionalCommand(mLauncherCommands.new Target));
+        // launch buttons
+        mButtons.create(mButtonBoard, 4).whenPressed(mSuperstructureCommands.new LaunchSequence(1)
+            .alongWith(mLEDCommands.new SetBlingState(Bling.kLaunch)));
+        mButtons.create(mButtonBoard, 3).whenPressed(mSuperstructureCommands.new LaunchSequence(5))
+            .whileActiveContinuous(mLEDCommands.new SetBlingState(Bling.kLaunch)); // TODO: validate
+                                                                                   // multiple
+                                                                                   // launch
+                                                                                   // animations
 
-        new JoystickButton(mButtonBoard, 2).toggleWhenPressed(new ParallelCommandGroup(
-            mIntakeCommands.new Harvest(mIntake, mIndexer), mIndexerCommands.new LoadFromIntake(mIndexer)));
-        new JoystickButton(mButtonBoard, 3).toggleWhenPressed(mIntakeCommands.new Eject(mIntake));
+        // toggle pickup (command group)
+        mButtons.create(mButtonBoard, 2).toggleWhenPressed(mSuperstructureCommands.new IntakeFive())
+            .whenActive(mLEDCommands.new SetBlingState(Bling.kIntake)) // TODO: validate pickup
+                                                                       // animation
+            .whenInactive(mLEDCommands.new SetBlingState(Bling.kTeleop));
 
-        new JoystickButton(mButtonBoard, 4).whileHeld(mClimberCommands.new Retract(mClimber));
-        new JoystickButton(mButtonBoard, 5).whileHeld(mClimberCommands.new Extend(mClimber));
+        // toggle eject
+        mButtons.create(mButtonBoard, 1).toggleWhenPressed(mIntakeCommands.new Eject())
+            .whenActive(mLEDCommands.new SetBlingState(Bling.kEject)) // TODO: validate eject
+                                                                      // animation
+            .whenInactive(mLEDCommands.new SetBlingState(Bling.kTeleop));
 
-        new JoystickButton(mButtonBoard, 6).whenPressed(mPanelRotatorCommands.new Raise(mPanelRotator));
-        new JoystickButton(mButtonBoard, 7).whenPressed(mPanelRotatorCommands.new Lower(mPanelRotator));
-        new JoystickButton(mButtonBoard, 8).whenPressed(mPanelRotatorCommands.new SpinRotation(mPanelRotator), false);
-        new JoystickButton(mButtonBoard, 9).whenPressed(mPanelRotatorCommands.new SpinToColor(mPanelRotator));
+        // climb buttons -- note, we are not differentiating different climb states for
+        // animations
+        mButtons.create(mButtonBoard, 8).whenHeld(mClimberCommands.new Winch()
+            .alongWith(mLEDCommands.new SetBlingState(Bling.kClimb)));
+        mButtons.create(mButtonBoard, 9).whileHeld(mClimberCommands.new Retract()
+            .alongWith(mLEDCommands.new SetBlingState(Bling.kClimb)));
+        mButtons.create(mButtonBoard, 10).whileHeld(mClimberCommands.new Extend()
+            .alongWith(mLEDCommands.new SetBlingState(Bling.kClimb)));
+        mButtons.create(mButtonBoard, 10).whenPressed(mLauncherCommands.new SetAsideToClimb());
 
-        new JoystickButton(mButtonBoard, 10).whileHeld(mClimberCommands.new ExtendMin(mClimber));
-        new JoystickButton(mButtonBoard, 11).whileHeld(mClimberCommands.new ExtendMax(mClimber));
+        // control panel buttons - turning off LEDs to minimize interference
+        mButtons.create(mButtonBoard, 5).whenPressed(mPanelRotatorCommands.new Lower()
+            .alongWith(mLEDCommands.new SetBlingState(Bling.kTeleop)));
+        mButtons.create(mButtonBoard, 6).whenPressed(mPanelRotatorCommands.new Raise()
+            .alongWith(mLEDCommands.new SetBlingState(Bling.kOff)));
+        mButtons.create(mButtonBoard, 7).whenPressed(mPanelRotatorCommands.new SpinToColor());
 
-        new JoystickButton(mButtonBoard, 12).whenPressed(mPanelRotatorCommands.new AutoSpinRotation(mPanelRotator));
-
-        new JoystickButton(mButtonBoard, 13).whenPressed(mPanelRotatorCommands.new AutoSpinToColor(mPanelRotator));
-
-        new JoystickButton(mButtonBoard, 14).whenHeld(mClimberCommands.new Winch(mClimber));
-
-        /* Four-way Joystick
-        new JoystickButton(mButtonBoard, 15).whenHeld(new TurretRaiseCommand(mLauncher));
-        new JoystickButton(mButtonBoard, 16).whenHeld(new TurretLowerCommand(mLauncher));
-        new JoystickButton(mButtonBoard, 17).whenHeld(new TurretLeftCommand(mLauncher));
-        new JoystickButton(mButtonBoard, 18).whenHeld(new TurretRightCommand(mLauncher));
+        /* TODO: interface with the button board "joystick" potentially through GenericHID
+        mButtons.create(mButtonBoard, 12).whenPressed(mClimberCommands.new ExtendMin());
+        mButtons.create(mButtonBoard, 13).whenPressed(mClimberCommands.new ExtendMax());
+        mButtons.create(mButtonBoard, 14).whenPressed(mPanelRotatorCommands.new AutoSpinRotation());
+        mButtons.create(mButtonBoard, 15).whenPressed(mPanelRotatorCommands.new AutoSpinToColor());
         */
     }
 
@@ -271,74 +272,6 @@ public class RobotContainer
         }
 
         Logger.error("AutoModeSelector failed to select auto mode: " + selectedModeName);
-        return kDefaultAutoMode.command;
-    }
-
-    public TimedTrajectory<Pose2dWithCurvature> throughTrench()
-    {
-        ArrayList<Pose2d> waypoints = new ArrayList<Pose2d>();
-        Pose2d[] intermediate = new Pose2d[]
-        {
-            new Pose2d(Units.inchesToMeters(424), Units.inchesToMeters(135),
-                Rotation2d.fromDegrees(180)),
-            new Pose2d(Units.inchesToMeters(207), Units.inchesToMeters(135),
-                Rotation2d.fromDegrees(180))
-        };
-        for (int i = 0; i < intermediate.length; i++)
-        {
-            Pose2d pose = intermediate[i];
-            intermediate[i] = new Pose2d(pose.getTranslation().getX() - Units.inchesToMeters(312.5),
-                pose.getTranslation().getY(), pose.getRotation());
-        }
-        RobotStateMap stateMap = mStateEstimator.getEncoderRobotStateMap();
-        Pose2d robotPose = stateMap.getLatestState().pose;
-        double robotX = robotPose.getTranslation().getX();
-        if (robotX < Units.inchesToMeters(312.5))
-        {
-            for (int i = 0; i < intermediate.length; i++)
-            {
-                Pose2d pose = intermediate[i];
-                intermediate[i] = new Pose2d(-pose.getTranslation().getX(),
-                    pose.getTranslation().getY(), Rotation2d.fromDegrees(0));
-            }
-        }
-        for (int i = 0; i < intermediate.length; i++)
-        {
-            Pose2d pose = intermediate[i];
-            intermediate[i] = new Pose2d(pose.getTranslation().getX() + Units.inchesToMeters(312.5),
-                pose.getTranslation().getY(), pose.getRotation());
-        }
-        waypoints.add(robotPose);
-        for (Pose2d pose : intermediate)
-        {
-            waypoints.add(pose);
-        }
-        ArrayList<TimingConstraint<Pose2dWithCurvature>> constraints = new ArrayList<TimingConstraint<Pose2dWithCurvature>>();
-        return TrajectoryContainer.generateTrajectory(waypoints, constraints);
-    }
-
-    public TimedTrajectory<Pose2dWithCurvature> toControlPanel()
-    {
-        ArrayList<Pose2d> waypoints = new ArrayList<Pose2d>();
-        Pose2d pose = mStateEstimator.getEncoderRobotStateMap().getLatestState().pose;
-        waypoints.add(pose);
-        Translation2d p = pose.getTranslation();
-        Pose2d nextToControlPanel;
-        if (p.getX() < Units.inchesToMeters(359))
-        {
-            nextToControlPanel = new Pose2d(Units.inchesToMeters(328), Units.inchesToMeters(135),
-                Rotation2d.fromDegrees(0));
-        }
-        else
-        {
-            nextToControlPanel = new Pose2d(Units.inchesToMeters(390), Units.inchesToMeters(135),
-                Rotation2d.fromDegrees(180));
-        }
-        waypoints.add(nextToControlPanel);
-        ArrayList<TimingConstraint<Pose2dWithCurvature>> constraints = new ArrayList<TimingConstraint<Pose2dWithCurvature>>();
-        constraints.add(new VelocityLimitRegionConstraint(new Rectangle2d(
-            new Translation2d(Units.inchesToMeters(290), Units.inchesToMeters(161.6)),
-            new Translation2d(Units.inchesToMeters(428), Units.inchesToMeters(90))), .5));
-        return TrajectoryContainer.generateTrajectory(waypoints, constraints);
+        return TrajectoryContainer.kDefaultAutoMode.command;
     }
 }

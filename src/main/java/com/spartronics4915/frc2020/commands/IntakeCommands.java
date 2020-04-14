@@ -3,38 +3,20 @@ package com.spartronics4915.frc2020.commands;
 import com.spartronics4915.frc2020.subsystems.Indexer;
 import com.spartronics4915.frc2020.subsystems.Intake;
 
-import edu.wpi.first.wpilibj2.command.FunctionalCommand;
+import edu.wpi.first.wpilibj2.command.CommandBase;
 import edu.wpi.first.wpilibj2.command.RunCommand;
 import edu.wpi.first.wpilibj2.command.StartEndCommand;
 
 public class IntakeCommands
 {
-    /**
-     * Commands with simple logic statements should be implemented as a
-     * {@link FunctionalCommand}. This saves the overhead of a full
-     * {@link CommandBase}, but still allows us to deal with isFinished.
-     * <p>
-     * A FunctionalCommand takes five inputs:
-     * @param Runnable onInit
-     * @param Runnable onExecute
-     * @param Consumer<Boolean> onEnd (boolean interrupted)
-     * @param BooleanSupplier isFinished
-     * @param Subsystem requirement For both the CommandScheduler and the above method references.
-     * <p>
-     * Each of these parameters corresponds with a method in the CommandBase class.
-     */
+    private final Intake mIntake;
+    private final Indexer mIndexer;
 
-    /**
-     * This {@link FunctionalCommand} harvests balls by running {@link Intake}.intake continuously,
-     * unless terminated by a second press of the Harvest button or
-     * a positive reading from {@link Intake}.isBallHeld.
-     */
-    public class Harvest extends FunctionalCommand
+    public IntakeCommands(Intake intake, Indexer indexer)
     {
-        public Harvest(Intake intake, Indexer indexer)
-        {
-            super(() -> {}, intake::harvest, (Boolean b) -> intake.stop(), indexer::getIntakeBallLoaded, intake);
-        }
+        mIntake = intake;
+        mIndexer = indexer;
+        mIntake.setDefaultCommand(new Stop());
     }
 
     /**
@@ -47,17 +29,50 @@ public class IntakeCommands
      */
 
     /**
+     * This {@link StartEndCommand} harvests balls by running {@link Intake}.intake continuously,
+     * unless terminated by a second press of the Harvest button.
+     */
+    public class Harvest extends CommandBase
+    {
+        private boolean mShouldStopOnBall;
+
+        public Harvest(boolean shouldStopOnBall)
+        {
+            mShouldStopOnBall = shouldStopOnBall;
+            addRequirements(mIntake);
+        }
+
+        @Override
+        public void initialize()
+        {
+            mIntake.harvest();
+        }
+
+        @Override
+        public boolean isFinished()
+        {
+            return mIndexer.getIntakeBallLoaded() && mShouldStopOnBall;
+        }
+
+        @Override
+        public void end(boolean interrupted)
+        {
+            mIntake.stop();
+        }
+    }
+
+    /**
      * This {@link StartEndCommand} runs the intake motor backwards by calling
      * {@link Intake}.reverse repeatedly.
      * <p>
      * Note that this is not an Unjam command. The {@link Intake} subsystem only
      * controls the mechanical vector roller.
      */
-    public class Eject extends StartEndCommand // TODO: Does this execute(), or initialize()?
+    public class Eject extends StartEndCommand
     {
-        public Eject(Intake intake)
+        public Eject()
         {
-            super(intake::reverse, intake::stop, intake);
+            super(mIntake::reverse, mIntake::stop, mIntake);
         }
     }
 
@@ -69,9 +84,9 @@ public class IntakeCommands
      */
     public class Stop extends RunCommand
     {
-        public Stop(Intake intake)
+        public Stop()
         {
-            super(intake::stop, intake);
+            super(mIntake::stop, mIntake);
         }
     }
 }

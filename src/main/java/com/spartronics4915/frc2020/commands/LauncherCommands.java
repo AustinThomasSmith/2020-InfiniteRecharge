@@ -1,109 +1,203 @@
 package com.spartronics4915.frc2020.commands;
 
 import com.spartronics4915.frc2020.Constants;
+import com.spartronics4915.frc2020.CoordSysMgr2020;
 import com.spartronics4915.frc2020.subsystems.Launcher;
+import com.spartronics4915.frc2020.subsystems.Vision;
 import com.spartronics4915.lib.math.twodim.geometry.Pose2d;
 import com.spartronics4915.lib.math.twodim.geometry.Rotation2d;
+import com.spartronics4915.lib.math.threedim.math3.Vec3;
 import com.spartronics4915.lib.subsystems.estimator.RobotStateMap;
 
+import edu.wpi.first.wpilibj.util.Units;
 import edu.wpi.first.wpilibj2.command.CommandBase;
-import edu.wpi.first.wpilibj2.command.RunCommand;
+import edu.wpi.first.wpilibj2.command.ParallelCommandGroup;
+import edu.wpi.first.wpilibj2.command.WaitUntilCommand;
 
 public class LauncherCommands
 {
+    private final Launcher mLauncher;
+    private final Vision mVision;
+    private final IndexerCommands mIndexerCommands;
+    final CoordSysMgr2020 mCoordSysMgr;
     private final RobotStateMap mStateMap;
-    private final Pose2d mTarget;
+    private final Pose2d mMatchTargetMeters;
+    private final Vec3 mMatchTargetInches;
+    private final Vec3 mInnerTargetInches;
 
-    public LauncherCommands(RobotStateMap stateMap, Pose2d targetPose)
+    public LauncherCommands(Launcher launcher, Vision vision,
+        IndexerCommands indexerCommands, RobotStateMap stateMap)
     {
+        mLauncher = launcher;
+        mVision = vision;
+        mIndexerCommands = indexerCommands;
         mStateMap = stateMap;
-        mTarget = targetPose;
+        mCoordSysMgr = new CoordSysMgr2020();
+
+        // our target is always on the opposite side of the field. This
+        // works for both Alliances since the field is symmetric and we
+        // use the same coordinate system (rotated by 180) on the Dashboard.
+        // (almost, since RSM is meters and dashboard is inches).
+        mMatchTargetInches = new Vec3(
+            Constants.Vision.kAllianceGoalCoords[0],
+            Constants.Vision.kAllianceGoalCoords[1],
+            0); // on ground/robot origin - we could include height if of value
+        mInnerTargetInches = new Vec3(Constants.Vision.kAllianceInnerGoalCoords);
+
+        mMatchTargetMeters = new Pose2d(
+            Units.inchesToMeters(Constants.Vision.kAllianceGoalCoords[0]),
+            Units.inchesToMeters(Constants.Vision.kAllianceGoalCoords[1]),
+            Rotation2d.fromDegrees(180));
+
+        mLauncher.setDefaultCommand(new TargetAndShoot());
+        // mLauncher.setDefaultCommand(new ShootBallTest());
     }
 
-    public class Target extends CommandBase
+    public Launcher getLauncher()
     {
-        private final Launcher mLauncher;
+        return mLauncher;
+    }
 
-        public Target(Launcher launcher)
+    public class SetAsideToClimb extends CommandBase
+    {
+        public SetAsideToClimb()
         {
-            mLauncher = launcher;
+            addRequirements(mLauncher);
+        }
+
+        @Override
+        public void execute()
+        {
+            mLauncher.turnTurret(Rotation2d.fromDegrees(-45));
+        }
+
+        @Override
+        public boolean isFinished()
+        {
+            return false;
+        }
+    }
+
+    public class TargetAndShoot extends CommandBase
+    {
+        public TargetAndShoot()
+        {
             addRequirements(mLauncher);
         }
 
         // Called every time the scheduler runs while the command is scheduled.
+        // Default isFinished (true) is okay since we assume we'll be
+        // interrupted by button-release.
         @Override
         public void execute()
         {
-            double distance = trackTarget(mLauncher);
+            double distance = trackTarget();
             mLauncher.runFlywheel(mLauncher.calcRPS(distance));
         }
 
-        // Returns true when the command should end.
         @Override
-        public boolean isFinished()
+        public void end(boolean interrupted)
         {
-            if (!mLauncher.inRange() || mLauncher.atTarget())
-                return true;
-            else
-                return false;
+            mLauncher.stopTurret();
         }
     }
 
-    public class Adjust extends CommandBase
+    public class TrackPassively extends CommandBase
     {
-        private final Launcher mLauncher;
-
-        public Adjust(Launcher launcher)
+        public TrackPassively()
         {
-            mLauncher = launcher;
             addRequirements(mLauncher);
-        }
-
-        // Called when the command is initially scheduled.
-        @Override
-        public void initialize()
-        {
-            mLauncher.runFlywheel(0);
         }
 
         // Called every time the scheduler runs while the command is scheduled.
         @Override
         public void execute()
         {
-            trackTarget(mLauncher);
+            trackTarget();
         }
 
-        // Returns true when the command should end.
+        @Override
+        public void end(boolean interrupted)
+        {
+            if (interrupted)
+            {
+                mLauncher.stopTurret();
+            }
+        }
+    }
+
+    public class Zero extends CommandBase
+    {
+        public Zero()
+        {
+            addRequirements(mLauncher);
+        }
+
+        @Override
+        public void execute()
+        {
+            mLauncher.zeroTurret();
+        }
+
         @Override
         public boolean isFinished()
         {
-            if (mLauncher.atTarget())
-                return true;
-            else
-                return false;
+            return mLauncher.isZeroed();
         }
     }
 
     /**
-     * @return Distance to the target in meters
+     * @return Distance to the target in inches
      */
-    private double trackTarget(Launcher launcher)
+    private double trackTarget()
     {
         Pose2d fieldToTurret = mStateMap.getLatestFieldToVehicle()
-        .transformBy(Constants.Launcher.kTurretOffset);
-        Pose2d turretToTarget = fieldToTurret.inFrameReferenceOf(mTarget);
+            .transformBy(Constants.Launcher.kRobotToTurret);
+        Pose2d turretToTarget = fieldToTurret.inFrameReferenceOf(mMatchTargetMeters);
         Rotation2d fieldAnglePointingToTarget = new Rotation2d(
-            turretToTarget.getTranslation().getX(), turretToTarget.getTranslation().getY(),
-            true).inverse();
-
+            turretToTarget.getTranslation().getX(),
+            turretToTarget.getTranslation().getY(),
+            true);
         Rotation2d turretAngle = fieldAnglePointingToTarget
-            .rotateBy(fieldToTurret.getRotation());
-        double distance = mTarget.distance(fieldToTurret);
-
-        launcher.adjustHood(launcher.calcPitch(distance));
-        launcher.turnTurret(turretAngle);
-
+            .rotateBy(fieldToTurret.getRotation().inverse());
+        double distance = Math.hypot(turretToTarget.getTranslation().getX(), turretToTarget.getTranslation().getY());
+        distance = Units.metersToInches(distance);
+        mLauncher.adjustHood(mLauncher.calcPitch(distance));
+        mLauncher.turnTurret(turretAngle);
         return distance;
+    }
+
+    /**
+     * return the distance (in meters) to the tracked target.  If the target
+     * is within our field of view, we adjust both hood and turret angle.
+     */
+    private double trackTargetAlt()
+    {
+        Pose2d robotToField = mStateMap.getLatestFieldToVehicle();
+        // we want an angle relative to turret neutral pose
+        this.mCoordSysMgr.updateTurretAngle(0);
+
+        // mCoordSysMgr operates in inches, but accepts robot coords in meters.
+        this.mCoordSysMgr.updateRobotPose(robotToField);
+
+        // convert the match target in field coords into turret-relative coords
+        // targetInMnt "says it all".
+        Vec3 targetInMnt = mCoordSysMgr.fieldPointToMount(mMatchTargetInches);
+        Vec3 innerTargetInMnt = mCoordSysMgr.fieldPointToMount(mInnerTargetInches);
+
+        double angle = targetInMnt.angleOnXYPlane();
+        double dist = targetInMnt.lengthXY(); // already in inches
+        if (angle > 180)
+        {
+            // [0-360) -> (-180, 180]
+            angle = -(360 - angle);
+        }
+        if (Math.abs(angle) < Constants.Launcher.kMaxAngleDegrees)
+        {
+            mLauncher.adjustHood(mLauncher.calcPitch(dist));
+            mLauncher.turnTurret(angle);
+        }
+        return dist;
     }
 
     /*
@@ -112,13 +206,10 @@ public class LauncherCommands
      */
     public class ShootBallTest extends CommandBase
     {
-        private final Launcher mLauncher;
-
         // You should only use one subsystem per command. If multiple are needed, use a
         // CommandGroup.
-        public ShootBallTest(Launcher launcher)
+        public ShootBallTest()
         {
-            mLauncher = launcher;
             addRequirements(mLauncher);
         }
 
@@ -126,7 +217,56 @@ public class LauncherCommands
         @Override
         public void execute()
         {
-            mLauncher.runFlywheel((double) mLauncher.dashboardGetNumber("FlywheelRPS", 0));
+            mLauncher.runFlywheel((double) mLauncher.dashboardGetNumber("flywheelRPSSlider", 0));
+            mLauncher.adjustHood(Rotation2d.fromDegrees(
+                (double) mLauncher.dashboardGetNumber("hoodAngleSlider", 0)));
+            mLauncher.turnTurret(Rotation2d.fromDegrees(
+                (double) mLauncher.dashboardGetNumber("turretAngleSlider", 0)));
+        }
+
+        // Called once the command ends or is interrupted.
+        @Override
+        public void end(boolean interrupted)
+        {
+            if (interrupted)
+            {
+                mLauncher.stopTurret();
+            }
+            mLauncher.reset();
+        }
+    }
+
+    // XXX: subclass CommandBase so we don't need the launcher
+    public class WaitForFlywheel extends WaitUntilCommand
+    {
+        public WaitForFlywheel()
+        {
+            super(mLauncher::isFlywheelSpun);
+        }
+    }
+
+    /*
+     * Command for testing, runs flywheel at a given RPS
+     * !DO NOT MAKE THE RPS MORE THAN 90!
+     */
+    public class ShootBallTestWithDistance extends CommandBase
+    {
+        // You should only use one subsystem per command. If multiple are needed, use a
+        // CommandGroup.
+        public ShootBallTestWithDistance()
+        {
+            addRequirements(mLauncher);
+        }
+
+        // Called every time the scheduler runs while the command is scheduled.
+        @Override
+        public void execute()
+        {
+            mLauncher.turnTurret(Rotation2d
+                .fromDegrees((double) mLauncher.dashboardGetNumber("turretAngleSlider", 0)));
+            double dist = (double) mLauncher.dashboardGetNumber("targetDistanceSlider", 120);
+            mLauncher.runFlywheel(mLauncher.calcRPS(dist));
+            mLauncher.adjustHood(mLauncher.calcPitch(dist));
         }
 
         // Returns true when the command should end.
@@ -140,32 +280,47 @@ public class LauncherCommands
         @Override
         public void end(boolean interrupted)
         {
+            if (interrupted)
+            {
+                mLauncher.stopTurret();
+            }
             mLauncher.reset();
+        }
+    }
+
+    public class ShootingTest extends ParallelCommandGroup
+    {
+        public ShootingTest()
+        {
+            addCommands(new ShootBallTest(),
+                mIndexerCommands.new LoadToLauncher(4));
+        }
+    }
+
+    public class ShootingCalculatedTest extends ParallelCommandGroup
+    {
+        public ShootingCalculatedTest()
+        {
+            addCommands(new ShootBallTestWithDistance(),
+                mIndexerCommands.new LoadToLauncher(4));
         }
     }
 
     public class TurretTest extends CommandBase
     {
-        private final Launcher mLauncher;
-
         // You should only use one subsystem per command. If multiple are needed, use a
         // CommandGroup.
-        public TurretTest(Launcher launcher)
+        public TurretTest()
         {
-            mLauncher = launcher;
             addRequirements(mLauncher);
-        }
-
-        // Called when the command is initially scheduled.
-        @Override
-        public void initialize()
-        {
         }
 
         // Called every time the scheduler runs while the command is scheduled.
         @Override
         public void execute()
         {
+            double degrees = (double) mLauncher.dashboardGetNumber("turretAngleSlider", 0);
+            mLauncher.turnTurret(Rotation2d.fromDegrees(degrees));
         }
 
         // Returns true when the command should end.
@@ -179,19 +334,16 @@ public class LauncherCommands
         @Override
         public void end(boolean interrupted)
         {
-            mLauncher.reset();
+            mLauncher.stopTurret();
         }
     }
 
     public class HoodTest extends CommandBase
     {
-        private final Launcher mLauncher;
-
         // You should only use one subsystem per command. If multiple are needed, use a
         // CommandGroup.
-        public HoodTest(Launcher launcher)
+        public HoodTest()
         {
-            mLauncher = launcher;
             addRequirements(mLauncher);
         }
 
@@ -200,7 +352,8 @@ public class LauncherCommands
         public void execute()
         {
             mLauncher.adjustHood(
-                Rotation2d.fromDegrees((double) mLauncher.dashboardGetNumber("TurretAimAngle", 0)));
+                Rotation2d
+                    .fromDegrees((double) mLauncher.dashboardGetNumber("hoodAngleSlider", 0)));
         }
 
         // Returns true when the command should end.
@@ -215,6 +368,42 @@ public class LauncherCommands
         public void end(boolean interrupted)
         {
             mLauncher.reset();
+        }
+    }
+
+    public class TurretVision extends CommandBase
+    {
+        double yam;
+        double tomato;
+
+        public TurretVision()
+        {
+            yam = 0;
+            tomato = 0;
+            addRequirements(mLauncher);
+        }
+
+        @Override
+        public void execute()
+        {
+            double potato = mVision.dashboardGetNumber("PIDOffset", 0).doubleValue();
+            if (yam != potato)
+                tomato = mLauncher.getTurretDirection().getDegrees() - potato;
+            mLauncher.turnTurret(Rotation2d.fromDegrees(tomato));
+            mVision.dashboardPutNumber("VisionTargetPosition", (tomato));
+            yam = potato;
+        }
+
+        @Override
+        public boolean isFinished()
+        {
+            return false;
+        }
+
+        @Override
+        public void end(boolean interrupted)
+        {
+            mLauncher.stopTurret();
         }
     }
 }

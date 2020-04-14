@@ -1,4 +1,4 @@
-package com.spartronics4915.lib.math.threedim;
+package com.spartronics4915.lib.math.threedim.ejml;
 
 import org.ejml.data.DMatrix3; // Vec3
 import org.ejml.data.DMatrix3x3; // Vec3
@@ -42,6 +42,21 @@ public class Vec3 extends DMatrix3
         assert v.length == 3;
     }
 
+    public double getX()
+    {
+        return this.a1;
+    }
+
+    public double getY()
+    {
+        return this.a2;
+    }
+
+    public double getZ()
+    {
+        return this.a3;
+    }
+
     public Vec3 add(final Vec3 rhs)
     {
         return new Vec3(this.a1+rhs.a1, this.a2+rhs.a2, this.a3+rhs.a3);
@@ -82,15 +97,21 @@ public class Vec3 extends DMatrix3
     }
 
     /**
-     * compute the angle between two vectors
+     * compute the angle between two 3d vectors
      * @param Vec3
-     * @return angle in degrees
+     * @return angle in degrees. Sign of angle is always positive.
      */
     public double angleWith(final Vec3 rhs)
     {
         double d = this.asUnit().dot(rhs.asUnit());
         double rads = Math.acos(d > 1.0 ? 1 : d < -1. ? -1. : d);
         return Math.toDegrees(rads);
+    }
+
+    public double angleOnXYPlane()
+    {
+        Vec3 nv = new Vec3(this.a1, this.a2, 0).asUnit();
+        return Math.toDegrees(Math.atan2(nv.a2, nv.a1));
     }
 
     public double dot(final Vec3 rhs)
@@ -123,9 +144,21 @@ public class Vec3 extends DMatrix3
         return true;
     }
 
+    /**
+     * @return lenght of 3D vector. aka: distance of 3d point from origin.
+     */
     public double length()
     {
         return NormOps_DDF3.normF(this);
+    }
+
+    /**
+     * @return - length of xy components of vector.
+     *   aka: distance of xy point from origin.
+     */
+    public double lengthXY()
+    {
+        return Math.sqrt(this.a1*this.a1 + this.a2*this.a2);
     }
 
     public void normalize()

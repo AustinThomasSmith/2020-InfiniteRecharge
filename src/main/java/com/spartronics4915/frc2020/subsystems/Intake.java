@@ -3,12 +3,8 @@ package com.spartronics4915.frc2020.subsystems;
 import com.spartronics4915.frc2020.Constants;
 import com.spartronics4915.lib.subsystems.SpartronicsSubsystem;
 
-import edu.wpi.first.wpilibj.DigitalInput;
-
 import com.spartronics4915.lib.hardware.motors.SpartronicsSRX;
 import com.spartronics4915.lib.hardware.motors.SpartronicsMotor;
-import com.spartronics4915.lib.hardware.motors.SensorModel;
-import com.spartronics4915.lib.hardware.motors.SpartronicsMax;
 import com.spartronics4915.lib.hardware.motors.SpartronicsSimulatedMotor;
 
 /**
@@ -21,7 +17,7 @@ public class Intake extends SpartronicsSubsystem
 
     public Intake()
     {
-        mHarvestMotor = SpartronicsMax.makeMotor(Constants.Intake.kHarvestMotorId);
+        mHarvestMotor = SpartronicsSRX.makeMotor(Constants.Intake.kHarvestMotorId);
         if (mHarvestMotor.hadStartupError())
         {
             mHarvestMotor = new SpartronicsSimulatedMotor(Constants.Intake.kHarvestMotorId);
@@ -31,6 +27,10 @@ public class Intake extends SpartronicsSubsystem
         {
             logInitialized(true);
         }
+
+        mHarvestMotor.setBrakeMode(false);
+        stop();
+        mHarvestMotor.setOutputInverted(true);
     }
 
     /**
@@ -38,7 +38,8 @@ public class Intake extends SpartronicsSubsystem
      */
     public void harvest()
     {
-        mHarvestMotor.setDutyCycle(Constants.Intake.kHarvestSpeed);
+        dashboardPutString("Status", "harvesting");
+        mHarvestMotor.setPercentOutput(Constants.Intake.kHarvestSpeed);
     }
 
     /**
@@ -46,25 +47,16 @@ public class Intake extends SpartronicsSubsystem
      */
     public void reverse()
     {
-        System.out.println("here");
-        mHarvestMotor.setDutyCycle(Constants.Intake.kEjectSpeed);
+        dashboardPutString("Status", "ejecting");
+        mHarvestMotor.setPercentOutput(Constants.Intake.kEjectSpeed);
     }
-
-    /**
-     * Checks to see if a ball is held in the intake chamber
-     * with a proximity sensor returning a digital value.
-     * <p>
-     * The style of proximity sensor we use requires MANUAL calibration.
-     *
-     * @return Whether a ball is held
-     */
-    
 
     /**
      * Universal stop method
      */
     public void stop()
     {
+        dashboardPutString("Status", "stopped");
         mHarvestMotor.setNeutral();
     }
 }

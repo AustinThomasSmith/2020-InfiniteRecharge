@@ -4,64 +4,84 @@ import com.spartronics4915.frc2020.Constants;
 import com.spartronics4915.frc2020.subsystems.PanelRotator;
 
 import edu.wpi.first.wpilibj2.command.CommandBase;
-import edu.wpi.first.wpilibj2.command.FunctionalCommand;
 import edu.wpi.first.wpilibj2.command.RunCommand;
 import edu.wpi.first.wpilibj2.command.SequentialCommandGroup;
 
 public class PanelRotatorCommands
 {
-    /**
-     * Commands with simple logic statements should be implemented as a
-     * {@link FunctionalCommand}. This saves the overhead of a full
-     * {@link CommandBase}, but still allows us to deal with isFinished.
-     * <p>
-     * A FunctionalCommand takes five inputs:
-     * @param Runnable onInit
-     * @param Runnable onExecute
-     * @param Consumer<Boolean> onEnd (boolean interrupted)
-     * @param BooleanSupplier isFinished
-     * @param Subsystem requirement For both the CommandScheduler and the above method references.
-     * <p>
-     * Each of these parameters corresponds with a method in the CommandBase class.
-     */
+    private final PanelRotator mPanelRotator;
+
+    public PanelRotatorCommands(PanelRotator panelRotator)
+    {
+        mPanelRotator = panelRotator;
+        mPanelRotator.setDefaultCommand(new Stop());
+    }
 
     /**
-     * This Raise {@link FunctionalCommand} calls {@link PanelRotator}.raise
+     * This Raise {@link CommandBase} calls {@link PanelRotator}.raise
      * repeatedly, until the upper optical flag is broken, at which point the
      * motor will stop.
      * <p>
      * The motor will also stop raising if interrupted by another Command.
      */
-    public class Raise extends FunctionalCommand
+    public class Raise extends CommandBase
     {
-        public Raise(PanelRotator panelRotator)
+        public Raise()
         {
-            super(() -> {}, panelRotator::raise, (Boolean b) -> panelRotator.stop(),
-                panelRotator::getOpticalFlagUp, panelRotator);
+            addRequirements(mPanelRotator);
+        }
+
+        @Override
+        public void execute()
+        {
+            mPanelRotator.raise();
+        }
+
+        @Override
+        public boolean isFinished()
+        {
+            return mPanelRotator.getOpticalFlagUp();
+        }
+
+        @Override
+        public void end(boolean interrupted)
+        {
+            mPanelRotator.stop();
         }
     }
 
     /**
-     * This Lower {@link FunctionalCommand} will call {@link PanelRotator}.lower
+     * This Lower {@link CommandBase} will call {@link PanelRotator}.lower
      * repeatedly, until the down limit switch is pressed, at which point the
      * motor will stop.
      * <p>
      * The motor will also stop lowering if interrupted by another Command.
      */
-    public class Lower extends FunctionalCommand
+    public class Lower extends CommandBase
     {
-        public Lower(PanelRotator panelRotator)
+        public Lower()
         {
-            super(() -> {}, panelRotator::lower, (Boolean b) -> panelRotator.stop(),
-                panelRotator::getLimitSwitchDown, panelRotator);
+            addRequirements(mPanelRotator);
+        }
+
+        @Override
+        public void execute()
+        {
+            mPanelRotator.lower();
+        }
+
+        @Override
+        public boolean isFinished()
+        {
+            return mPanelRotator.getLimitSwitchDown();
+        }
+
+        @Override
+        public void end(boolean interrupted)
+        {
+            mPanelRotator.stop();
         }
     }
-
-    /**
-     * Commands that are "complex", or have > simple logic within them,
-     * should be put here. They simply extend {@link CommandBase} and
-     * are written as such.
-     */
 
     /**
      * This {@link CommandBase} will spin the color wheel to the correct color as broadcast
@@ -72,14 +92,12 @@ public class PanelRotatorCommands
      */
     public class SpinToColor extends CommandBase
     {
-        private final PanelRotator mPanelRotator;
         private String mTargetColor;
 
         // You should only use one subsystem per command. If multiple are needed, use a
         // CommandGroup.
-        public SpinToColor(PanelRotator panelRotator)
+        public SpinToColor()
         {
-            mPanelRotator = panelRotator;
             addRequirements(mPanelRotator);
         }
 
@@ -112,6 +130,11 @@ public class PanelRotatorCommands
                 mPanelRotator.logError("Color Sensor: No data provided");
                 return true;
             }
+            else if (mPanelRotator.getLimitSwitchDown())
+            {
+                mPanelRotator.logError("Arm is down, so the wheel is stopped");
+                return true;
+            }
             else
                 return false;
 
@@ -135,17 +158,14 @@ public class PanelRotatorCommands
      */
     public class SpinRotation extends CommandBase
     {
-        private final PanelRotator mPanelRotator;
-
         private int eighths;
         private String currentColor;
         private String lastColor;
 
         // You should only use one subsystem per command. If multiple are needed, use a
         // CommandGroup.
-        public SpinRotation(PanelRotator panelRotator)
+        public SpinRotation()
         {
-            mPanelRotator = panelRotator;
             addRequirements(mPanelRotator);
         }
 
@@ -174,6 +194,16 @@ public class PanelRotatorCommands
             if (mPanelRotator.getColorConfidence() < Constants.PanelRotator.kConfidenceMinimum)
             {
                 mPanelRotator.logError("Confidence too low!");
+                return true;
+            }
+            else if (mPanelRotator.getRotatedColor().equals("Error"))
+            {
+                mPanelRotator.logError("Color Sensor: No data provided");
+                return true;
+            }
+            else if (mPanelRotator.getLimitSwitchDown())
+            {
+                mPanelRotator.logError("Arm is down, so the wheel is stopped");
                 return true;
             }
 
@@ -207,35 +237,28 @@ public class PanelRotatorCommands
      */
     public class Stop extends RunCommand
     {
-        public Stop(PanelRotator panelRotator)
+        public Stop()
         {
-            super(panelRotator::stop, panelRotator);
+            super(mPanelRotator::stop, mPanelRotator);
         }
     }
 
-    /**
-     * These names are frustratingly vague. TODO: determine a better prefix than "auto"
-     * <p>
-     * FIXME: Will the act of lowering / raising the wheel spin the control panel?
-     * <p>
-     * TODO: move DefaultCommands to PanelRotatorCommands etc.
-     * <p>
-     * TODO: make commands static etc.
-     */
+    /* These won't work without backing up the robot.
     public class AutoSpinRotation extends SequentialCommandGroup
     {
-        public AutoSpinRotation(PanelRotator panelRotator)
+        public AutoSpinRotation()
         {
-            super(new Raise(panelRotator), new SpinRotation(panelRotator), new SpinRotation(panelRotator),
-                new SpinRotation(panelRotator), new SpinRotation(panelRotator), new Lower(panelRotator));
+            super(new Raise(), new SpinRotation(), new SpinRotation(), new SpinRotation(),
+                new SpinRotation(), new Lower());
         }
     }
 
     public class AutoSpinToColor extends SequentialCommandGroup
     {
-        public AutoSpinToColor(PanelRotator panelRotator)
+        public AutoSpinToColor()
         {
-            super(new Raise(panelRotator), new SpinToColor(panelRotator), new Lower(panelRotator));
+            super(new Raise(), new SpinToColor(), new Lower());
         }
     }
+    */
 }

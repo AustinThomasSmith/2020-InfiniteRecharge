@@ -1,7 +1,6 @@
 package com.spartronics4915.frc2020.subsystems;
 
 import com.spartronics4915.frc2020.Constants;
-import com.spartronics4915.lib.hardware.motors.SensorModel;
 import com.spartronics4915.lib.hardware.motors.SpartronicsMax;
 import com.spartronics4915.lib.hardware.motors.SpartronicsMotor;
 import com.spartronics4915.lib.hardware.motors.SpartronicsSRX;
@@ -35,7 +34,10 @@ public class PanelRotator extends SpartronicsSubsystem
         mOpticalFlagUp = new DigitalInput(Constants.PanelRotator.kOpticalFlagUpId);
         mLimitSwitchDown = new DigitalInput(Constants.PanelRotator.kLimitSwitchDownId);
         mSpinMotor = SpartronicsMax.makeMotor(Constants.PanelRotator.kSpinMotorId);
-        mRaiseMotor = SpartronicsSRX.makeMotor(Constants.PanelRotator.kRaiseMotorId);
+        mSpinMotor.setBrakeMode(true);
+        // mRaiseMotor = new SpartronicsSRX.makeMotor(Constants.PanelRotator.kRaiseMotorId);
+        // mRaiseMotor.setBrakeMode(true);
+        mRaiseMotor = new SpartronicsSimulatedMotor(42); // FIXME: we have enough pdp ports - add back before competitions
 
         mColorSensor = new ColorSensorV3(I2C.Port.kOnboard);
         mColorMatcher.addColorMatch(Constants.PanelRotator.kRedTarget);
@@ -60,7 +62,7 @@ public class PanelRotator extends SpartronicsSubsystem
      */
     public void raise()
     {
-        mRaiseMotor.setDutyCycle(Constants.PanelRotator.kRaiseSpeed);
+        mRaiseMotor.setPercentOutput(Constants.PanelRotator.kRaiseSpeed);
     }
 
     /**
@@ -68,7 +70,7 @@ public class PanelRotator extends SpartronicsSubsystem
      */
     public void lower()
     {
-        mRaiseMotor.setDutyCycle(Constants.PanelRotator.kLowerSpeed);
+        mRaiseMotor.setPercentOutput(Constants.PanelRotator.kLowerSpeed);
     }
 
     /**
@@ -76,11 +78,10 @@ public class PanelRotator extends SpartronicsSubsystem
      */
     public void spin()
     {
-        mSpinMotor.setDutyCycle(Constants.PanelRotator.kSpinSpeed);
+        mSpinMotor.setPercentOutput(Constants.PanelRotator.kSpinSpeed);
     }
 
-    // TODO: What will this return before Stage Two?
-    /**
+    /** TODO: what will happen before stage two?
      * Gets the color the robot needs to spin to through game specific messages
      *
      * @return A String color - either Red, Blue, Yellow, or Green
@@ -88,38 +89,6 @@ public class PanelRotator extends SpartronicsSubsystem
     public String getTargetColor()
     {
         return DriverStation.getInstance().getGameSpecificMessage();
-    }
-
-    /**
-     * This gets the 18-bit output (max is 2^18 - 1, I think)
-     *
-     * @return a comma-separated String of raw RGB values
-     */
-    public String get18BitRGB()
-    {
-        int red = mColorSensor.getRed();
-        int green = mColorSensor.getGreen();
-        int blue = mColorSensor.getBlue();
-
-        String RGB = red + ", " + green + ", " + blue;
-
-        return RGB;
-    }
-
-    /**
-     * This gets the 18-bit output but divided by 262143 to make a fraction between 0 & 1
-     *
-     * @return a comma-separated String of RGB values, as a percentage
-     */
-    public String getFloatRGB()
-    {
-        int redFloat = mColorSensor.getRed() / 262143;
-        int greenFloat = mColorSensor.getGreen() / 262143;
-        int blueFloat = mColorSensor.getBlue() / 262143;
-
-        String RGB = redFloat + ", " + greenFloat + ", " + blueFloat;
-
-        return RGB;
     }
 
     /**
@@ -176,8 +145,8 @@ public class PanelRotator extends SpartronicsSubsystem
         else
             rotatedColor = "Error";
 
-        dashboardPutString("Current Color (field)", rotatedColor);
-        dashboardPutNumber("ColorMatch Confidence", match.confidence);
+        dashboardPutString("currentColor", rotatedColor);
+        dashboardPutNumber("currentColorConfidence", match.confidence);
         return rotatedColor;
     }
 
@@ -195,13 +164,53 @@ public class PanelRotator extends SpartronicsSubsystem
     }
 
     /**
+     * Finds the distance between the sensor and what it is looking at
+     * @return 11-bit (0-2047) value
+     */
+    public int getDistance()
+    {
+        return mColorSensor.getProximity();
+    }
+
+    /**
+     * This gets the 18-bit output (max is 2^18 - 1, I think)
+     *
+     * @return a comma-separated String of raw RGB values
+     */
+    public String get18BitRGB()
+    {
+        int red = mColorSensor.getRed();
+        int green = mColorSensor.getGreen();
+        int blue = mColorSensor.getBlue();
+
+        String RGB = red + ", " + green + ", " + blue;
+
+        return RGB;
+    }
+
+    /**
+     * This gets the 18-bit output but divided by 262143 to make a fraction between 0 & 1
+     *
+     * @return a comma-separated String of RGB values, as a percentage
+     */
+    public String getFloatRGB()
+    {
+        int redFloat = mColorSensor.getRed() / 262143;
+        int greenFloat = mColorSensor.getGreen() / 262143;
+        int blueFloat = mColorSensor.getBlue() / 262143;
+
+        String RGB = redFloat + ", " + greenFloat + ", " + blueFloat;
+
+        return RGB;
+    }
+
+    /**
      * Checks if the top optical flag is broken
      *
      * @return whether the PanelManipulator is raised
      */
     public boolean getOpticalFlagUp()
     {
-        // TODO: Double-check this
         return mOpticalFlagUp.get();
     }
 
@@ -212,7 +221,6 @@ public class PanelRotator extends SpartronicsSubsystem
      */
     public boolean getLimitSwitchDown()
     {
-        // TODO: Double-check this
         return mLimitSwitchDown.get();
     }
 
@@ -221,7 +229,17 @@ public class PanelRotator extends SpartronicsSubsystem
      */
     public void stop()
     {
-        mSpinMotor.setDutyCycle(0);
-        mRaiseMotor.setDutyCycle(0);
+        mSpinMotor.setPercentOutput(0);
+        mRaiseMotor.setPercentOutput(0);
+    }
+
+    @Override
+    public void periodic()
+    {
+        dashboardPutNumber("IR distance: ", getDistance());
+        dashboardPutString("Color seen by robot: ", getActualColor());
+        dashboardPutString("Color seen by FMS: ", getRotatedColor());
+        dashboardPutNumber("Color match confidence: ", getColorConfidence());
+        dashboardPutString("Color sensor target (what the FIELD wants to see): ", getTargetColor());
     }
 }

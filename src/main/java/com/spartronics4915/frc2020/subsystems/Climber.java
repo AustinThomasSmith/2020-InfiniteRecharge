@@ -9,7 +9,7 @@ import com.spartronics4915.lib.hardware.motors.SpartronicsSRX;
 
 /**
  * CLIMBER
- * 
+ *
  * OBJECTIVE: Be able to grab and hold on to the shield generator
  * and remain balanced there even after the robot is deactiviated
  * Use cases:
@@ -17,25 +17,25 @@ import com.spartronics4915.lib.hardware.motors.SpartronicsSRX;
  * 2) Climb from the ground to bar that is elevated, leveling it in the process
  * 3) Climb from the ground to bar that is sunken, staying off the ground if possible
  * 4) Able to reverse the extend function for repositioning purposes
- * 
+ *
  * INTEGRATIONS:
  * 1) A NEO motor used to winch the climber
  * 2) A 775 PRO motor used to lift the climber
- * 
+ *
  * USE CASE 1: CLIMB FROM THE GROUND TO BAR THAT IS LEVEL
  * 1) Press and hold a single button to raise the climber to the desired level
  * 2) Hit the winch button and watch the magic happen
- *  
+ *
  * USE CASE 2: CLIMBER FROM THE GROUND TO BAR THAT IS ELEVATED
  * 1) Press the Climb to Max button
  * 2) Winch
- * 
+ *
  * USE CASE 3: CLIMB FROM THE GROUND TO BAR THAT IS SUNKEN
  * 1) Press Climb to Min button
  * 2) Winch
- * 
+ *
  * USE CASE 4: RETRACT
- * 1) Press the retract button
+ * 1) Hold the retract button
  */
 public class Climber extends SpartronicsSubsystem
 {
@@ -47,6 +47,7 @@ public class Climber extends SpartronicsSubsystem
         // Hardware Contructor (Add motors and such here when I get them)
         mLiftMotor = SpartronicsSRX.makeMotor(Constants.Climber.kLiftMotorId);
         mWinchMotor = SpartronicsMax.makeMotor(Constants.Climber.kWinchMotorId);
+        mWinchMotor.setBrakeMode(true);
 
         if (mLiftMotor.hadStartupError() || mWinchMotor.hadStartupError())
         {
@@ -58,6 +59,8 @@ public class Climber extends SpartronicsSubsystem
         {
             logInitialized(true);
         }
+
+        stop();
     }
 
     /**
@@ -65,8 +68,8 @@ public class Climber extends SpartronicsSubsystem
      */
     public void extend()
     {
-        mLiftMotor.setDutyCycle(Constants.Climber.kExtendSpeed);
-        mWinchMotor.setDutyCycle(0.0);
+        mLiftMotor.setPercentOutput(Constants.Climber.kExtendSpeed);
+        mWinchMotor.setPercentOutput(0.0);
     }
 
     /**
@@ -79,11 +82,11 @@ public class Climber extends SpartronicsSubsystem
      */
     public void winch(boolean stalled)
     {
-        mLiftMotor.setDutyCycle(0.0);
+        mLiftMotor.setPercentOutput(0.0);
         if (stalled)
-            mWinchMotor.setDutyCycle(Constants.Climber.kWinchSpeed);
+            mWinchMotor.setPercentOutput(Constants.Climber.kWinchSpeed);
         else
-            mWinchMotor.setDutyCycle(Constants.Climber.kReverseWinchSpeed);
+            mWinchMotor.setPercentOutput(Constants.Climber.kReverseWinchSpeed);
     }
 
     /**
@@ -91,8 +94,8 @@ public class Climber extends SpartronicsSubsystem
      */
     public void retract()
     {
-        mLiftMotor.setDutyCycle(Constants.Climber.kRetractSpeed);
-        mWinchMotor.setDutyCycle(0.0);
+        mLiftMotor.setPercentOutput(Constants.Climber.kRetractSpeed);
+        mWinchMotor.setPercentOutput(0.0);
     }
 
     /**
@@ -100,8 +103,8 @@ public class Climber extends SpartronicsSubsystem
      */
     public void stop()
     {
-        mLiftMotor.setDutyCycle(0.0);
-        mWinchMotor.setDutyCycle(0.0);
+        mLiftMotor.setPercentOutput(0.0);
+        mWinchMotor.setPercentOutput(0.0);
     }
 
     /**

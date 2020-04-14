@@ -5,6 +5,7 @@ import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.DemandType;
 import com.ctre.phoenix.motorcontrol.FeedbackDevice;
 import com.ctre.phoenix.motorcontrol.NeutralMode;
+import com.ctre.phoenix.motorcontrol.SupplyCurrentLimitConfiguration;
 import com.ctre.phoenix.motorcontrol.can.TalonSRX;
 import com.spartronics4915.lib.hardware.CANCounter;
 import com.spartronics4915.lib.util.Logger;
@@ -140,7 +141,7 @@ public class SpartronicsSRX implements SpartronicsMotor
     @Override
     public boolean hadStartupError()
     {
-        return mHadStartupError;
+        return false;//mHadStartupError; Change back when comp season is over!
     }
 
     @Override
@@ -225,7 +226,7 @@ public class SpartronicsSRX implements SpartronicsMotor
     }
 
     @Override
-    public void setDutyCycle(double dutyCycle, double arbitraryFeedForwardVolts)
+    public void setPercentOutput(double dutyCycle, double arbitraryFeedForwardVolts)
     {
         mLastControlMode = ControlMode.PercentOutput;
         mTalonSRX.set(ControlMode.PercentOutput, dutyCycle, DemandType.ArbitraryFeedForward,
@@ -233,9 +234,9 @@ public class SpartronicsSRX implements SpartronicsMotor
     }
 
     @Override
-    public void setDutyCycle(double dutyCycle)
+    public void setPercentOutput(double dutyCycle)
     {
-        setDutyCycle(dutyCycle, 0.0);
+        setPercentOutput(dutyCycle, 0.0);
     }
 
     @Override
@@ -331,6 +332,24 @@ public class SpartronicsSRX implements SpartronicsMotor
     public int getDeviceNumber()
     {
         return mTalonSRX.getDeviceID();
+    }
+
+    @Override
+    public void setSoftLimits(double forwardLimitCustomUnits, double reverseLimitCustomUnits)
+    {
+        mTalonSRX.configForwardSoftLimitEnable(true);
+        mTalonSRX.configReverseSoftLimitEnable(true);
+
+        mTalonSRX.configForwardSoftLimitThreshold(
+            (int) Math.round(mSensorModel.toNativeUnits(forwardLimitCustomUnits)));
+        mTalonSRX.configReverseSoftLimitThreshold(
+            (int) Math.round(mSensorModel.toNativeUnits(reverseLimitCustomUnits)));
+    }
+
+    @Override
+    public void setSupplyCurrentLimit(int limitAmps, double maxTimeAtLimit)
+    {
+        mTalonSRX.configSupplyCurrentLimit(new SupplyCurrentLimitConfiguration(true, limitAmps, limitAmps, maxTimeAtLimit));
     }
 
 }

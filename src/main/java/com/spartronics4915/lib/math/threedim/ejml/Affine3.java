@@ -1,4 +1,4 @@
-package com.spartronics4915.lib.math.threedim;
+package com.spartronics4915.lib.math.threedim.ejml;
 
 import java.util.ArrayList;
 import org.ejml.data.DMatrix4x4;
