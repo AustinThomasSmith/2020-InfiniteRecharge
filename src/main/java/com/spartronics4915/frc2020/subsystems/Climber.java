@@ -109,6 +109,7 @@ public class Climber extends SpartronicsSubsystem
         mWinchMotor.setPercentOutput(0.0);
     }
 
+    
     /**
      * @return Whether the output current of the Winch motor is above the "stall" threshold
      */
